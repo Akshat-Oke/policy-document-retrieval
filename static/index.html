@@ -222,7 +222,10 @@
         badge.classList.add("uk-label");
         badge.innerText = doc.bm25.toFixed(2);
         card.appendChild(badge);
-        content.innerHTML += wrapInSpan(doc.content, query);
+        content.innerHTML = wrapInSpan(
+          doc.content.replaceAll(/\n/gi, "<br>"),
+          query
+        );
         document.getElementById("results").appendChild(card);
       }
       function showLoadMore() {
