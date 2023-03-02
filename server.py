@@ -1,6 +1,6 @@
 import inverted_index
 import timeit
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 import webbrowser
 
 app = Flask(__name__, static_url_path="", static_folder="static/")
@@ -11,11 +11,9 @@ corpus = 1
 index = 1
 
 
-# @app.route("/", methods=["GET", "POST"])
-# def home():
-#     if request.method == "GET":
-#         data = "hello world"
-#         return jsonify({"data": data})
+@app.route("/", methods=["GET", "POST"])
+def home():
+    return send_file("static/index.html")
 
 
 @app.route("/search", methods=["POST", "GET"])
@@ -45,5 +43,9 @@ def search():
 # driver function
 if __name__ == "__main__":
     reader, corpus, index = inverted_index.init()
-    webbrowser.open("http://127.0.0.1:5000/index.html", new=2)
-    app.run()
+    # webbrowser.open("http://127.0.0.1:5000/index.html", new=2)
+    app.run(debug=True)
+
+
+
+

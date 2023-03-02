@@ -157,6 +157,10 @@
             ) {
               addCardForDoc(response.data.docs[docsLoaded]);
             }
+            if (docs.length == 0) {
+              document.getElementById("time").innerHTML =
+                "Error: <em>AND query term insignificant</em>";
+            }
             showLoadMore();
           })
           .catch(function (error) {
@@ -239,7 +243,9 @@
         }
       }
       function wrapInSpan(text, full_query) {
+        full_query = full_query.replace(/[\"-]/gi, "");
         const queries = full_query.split(" ");
+        console.log("queries", queries);
         let result = text;
         for (const query of queries) {
           if (query.length > 2 && !stopWords.includes(query))
@@ -247,8 +253,9 @@
         }
         return result;
         function wrapInSpanForQuery(text, query) {
+          console.log("Wrapping ", query);
           const stemmedQuery = stemmer(query.toLowerCase());
-          const terms = text.split(/[\r\n\t ]+/g);
+          const terms = text.split(/[^a-zA-Z]+/g);
           const stemmedTerms = terms.map((term) => stemmer(term.toLowerCase()));
           const wordsToWrap = [];
           for (let i = 0; i < terms.length; i++) {

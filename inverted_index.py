@@ -18,6 +18,14 @@ b = 1
 
 
 def normalise_query(query):
+    """
+    Performs Normalization of query by :
+    1. Remove Special Characters
+    2. Converts to lower case
+    3. Removes stopwords
+
+    Returns white-space seperated string
+    """
     query = clean_line(query)
     tokens = word_tokenize(query.lower())
     filtered_tokens = [
@@ -27,6 +35,9 @@ def normalise_query(query):
 
 
 def clean_line(line):
+    """
+    Removes Special
+    """
     line = re.sub(r"[_.]{2,}", "", line)
     line = re.sub(r"[\"]", "", line)
     line = re.sub(r"\w *\)", "", line)
@@ -47,14 +58,50 @@ def make_comparator(less_than):
 
 
 class Document:
+    """
+
+    Class to store Documents
+
+    Attributes
+    ----------
+    docID : int
+        Identifier of Document
+    map_of_terms : dict {term : frequency}
+        Dictionary to store frequency of terms in Document
+    numberofTerms : int
+        Number of Unique terms in Document
+    """
+
     def __init__(self, map_of_terms, docId):
+        """
+        Parameters
+        ----------
+        docID : int
+            Identifier of Document
+        map_of_terms : dict {term : frequency}
+            Dictionary to store frequency of terms in Document
+        numberofTerms : int
+            Number of Unique terms in Document
+        """
+
         self.docId = docId
         self.map_of_terms = map_of_terms
         self.numberOfTerms = len(self.map_of_terms)
 
 
 class Reader:
+    """Class"""
+
     def __init__(self, path, original_files_dir):
+        """
+        Parameters
+        ----------
+        path : string
+            path of the document
+        original_files_dir : dict {term : frequency}
+            Name of Original directory that contains all documents
+        """
+
         self.path = path
         self.original_files_dir = original_files_dir
         # add trailing / in original_files_dir
@@ -65,20 +112,23 @@ class Reader:
         self.current_file_index = 0
 
     def get_file_names(self):
-        # return sorted order
+        """Returns sorted list of filesin current directory"""
         return sorted(os.listdir(self.path))
 
     def get_original_passage_filename(self, docId):
+        """Returns filename using docID"""
         filename = self.file_names[docId // 500]
         return filename
 
     def get_original_passage_content(self, docId):
+        """Returns original passage from corpus using docID"""
         filename = self.file_names[docId // 500]
         with open(self.original_files_dir + filename) as f:
             passages = f.read().split("$$$")
             return passages[(docId % 500)]
 
     def get_next_document(self):
+        """Returns next passage/document in corpus"""
         if self.current_file_index >= len(self.file_names):
             return None
         with open(self.path + "/" + self.file_names[self.current_file_index]) as f:
@@ -87,8 +137,25 @@ class Reader:
 
 
 class Corpus:
+    """
+
+    Class to store corpus
+
+    Attributes
+    ----------
+    average_document_length : int
+        average length of all documents in the corpus
+    documents : dict {docID : Document}
+        Dictionary to map docID to instance of Document class
+    """
+
     def __init__(self, reader):
-        """Map<docId, Document>"""
+        """
+        Parameters
+        ----------
+        reader : Reader
+            instance of Reader class
+        """
         self.documents = {}
         self.average_document_length = 0
         self.build_corpus(reader)
@@ -125,7 +192,6 @@ class Corpus:
         return self.documents[docId]
 
 
-# Term in how many documents
 class InvertedIndex:
     def __init__(self, corpus):
         # Map <term, docId>
@@ -179,7 +245,10 @@ class InvertedIndex:
 
     # 1 2 4 5
     # 2 3 5 7
+    # 1 2 4 5 7
     def get_documents_for_query_OR(self, query_terms):
+        if query_terms == []:
+            return []
         # query_terms = query.split(" ")
         term_pointer = 1  # current
         result = self.get_posting_list(query_terms[0])
@@ -209,6 +278,9 @@ class InvertedIndex:
             term_pointer += 1
         return result
 
+    def remove_documents_for_terms(self, query_terms, docs):
+        return self.subtract(docs, self.get_documents_for_query_OR(query_terms))
+
     def subtract(self, list1, list2):
         i = 0
         j = 0
@@ -232,10 +304,10 @@ class InvertedIndex:
         nqi = len(self.get_posting_list(query_term))
         return math.log((N + 1) / (nqi + 0.5))
 
-    def BM25(self, document, query, k1, b):
+    def BM25(self, document, query_terms, k1, b):
         score = 0
-        terms = query.split(" ")
-        for term in terms:
+        # terms = query.split(" ")
+        for term in query_terms:
             if term in document.map_of_terms:
                 score += (
                     self.idf(term)
@@ -263,10 +335,39 @@ class InvertedIndex:
 
 class Query:
     def __init__(self, query):
+        print("query is ", query)
+        self.query = query
         self.was_corrected = False
-        self.query = normalise_query(query)
-        self.query = self.spell_check()
-        self.query_terms = self.query.split(" ")
+        # self.query = self.spell_check()
+        # self.query_terms = self.query.split(" ")
+        self.and_terms = re.findall(r"\"\w+\"", self.query)
+        self.query = re.sub(r"\"\w+\"", "", self.query)
+        print("After AND ", self.query)
+        self.not_terms = re.findall(r"\-\w+", self.query)
+        self.query = re.sub(r"\-\w+", "", self.query)
+        print("After NOT ", self.query)
+        self.or_terms = re.split(r"\s+", self.query.strip())
+        self.query_terms = list(set(self.and_terms + self.or_terms))
+        print(self.or_terms)
+        print(self.and_terms)
+        print(self.query_terms)
+        print(self.not_terms)
+        # self.query = normalise_query(query)
+        self.normalise_all_terms()
+
+    def normalise_all_terms(self):
+        def n(terms):
+            return [normalise_query(x) for x in terms if x not in stop_words]
+
+        self.query_terms = n(self.query_terms)
+        self.and_terms = n(self.and_terms)
+        self.or_terms = n(self.or_terms)
+        self.not_terms = n(self.not_terms)
+        self.not_terms = [re.sub("-", "", x) for x in self.not_terms]
+        # print(self.or_terms)
+        # print(self.and_terms)
+        # print(self.query_terms)
+        # print(self.not_terms)
 
     def spell_check(self):
         return self.query
@@ -278,12 +379,22 @@ class Query:
         else:
             return self.query
 
+    def get_candidate_documents(self, inverted_index):
+        docs = None
+        if self.and_terms:
+            docs = inverted_index.get_documents_for_query_AND(self.and_terms)
+        else:
+            docs = inverted_index.get_documents_for_query_OR(self.or_terms)
+        return inverted_index.remove_documents_for_terms(self.not_terms, docs)
+
     def retrieve_documents(self, reader, corpus, inverted_index):
-        docs = inverted_index.get_documents_for_query_OR(self.query_terms)
+        # docs = inverted_index.get_documents_for_query_AND(self.and_terms)
+        docs = self.get_candidate_documents(inverted_index)
+
         docs_with_bm25 = {}
         for doc in docs:
             docs_with_bm25[doc] = inverted_index.BM25(
-                corpus.get_document(doc), self.query, k1, b
+                corpus.get_document(doc), self.query_terms, k1, b
             )
         # print(docs_with_bm25)
         sorted_docs = sorted(
@@ -339,3 +450,12 @@ def spell_check(query):
 
 
 # main()
+
+
+# import re
+
+# text = 'The quick "brown fox" jumps over the "lazy dog".'
+
+# matches = re.findall(r'"([^"]*)"', text)
+
+# print(matches) # Output: ['brown fox', 'lazy dog']
