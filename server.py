@@ -43,9 +43,5 @@ def search():
 # driver function
 if __name__ == "__main__":
     reader, corpus, index = inverted_index.init()
-    # webbrowser.open("http://127.0.0.1:5000/index.html", new=2)
+    webbrowser.open("http://127.0.0.1:5000/", new=2)
     app.run(debug=True)
-
-
-
-
