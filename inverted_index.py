@@ -36,7 +36,7 @@ def normalise_query(query):
 
 def clean_line(line):
     """
-    Removes Special
+    Removes Special Characters
     """
     line = re.sub(r"[_.]{2,}", "", line)
     line = re.sub(r"[\"]", "", line)
@@ -94,12 +94,12 @@ class Reader:
 
     def __init__(self, path, original_files_dir):
         """
-        Parameters
-        ----------
-        path : string
-            path of the document
-        original_files_dir : dict {term : frequency}
-            Name of Original directory that contains all documents
+        Intialises class with given values.
+
+        Args:
+            path (str): path of the directory in which documents are stored.
+            
+            original_files_dir (dict {term : frequency}): Name of Original directory that contains  all documents
         """
 
         self.path = path
@@ -112,23 +112,45 @@ class Reader:
         self.current_file_index = 0
 
     def get_file_names(self):
-        """Returns sorted list of filesin current directory"""
+        """Gets file names of files in the directory.
+        
+        Returns:
+            list[str]: Returns sorted list of files in current directory given by path.
+        """
         return sorted(os.listdir(self.path))
 
     def get_original_passage_filename(self, docId):
-        """Returns filename using docID"""
+        """Fetches documents using documnet ID.
+
+        Args:
+            docId (int): Identifier for document.
+
+        Returns:
+            str: Returns filename with given docID
+        """
         filename = self.file_names[docId // 500]
         return filename
 
     def get_original_passage_content(self, docId):
-        """Returns original passage from corpus using docID"""
+        """Fetches original passage using document ID
+
+        Args:
+            docId (int): Identifier for document.
+
+        Returns:
+            str: Returns complete passage with given docID
+        """
         filename = self.file_names[docId // 500]
         with open(self.original_files_dir + filename) as f:
             passages = f.read().split("$$$")
             return passages[(docId % 500)]
 
     def get_next_document(self):
-        """Returns next passage/document in corpus"""
+        """Gets next document in directory given by path where current file is given by current_file_index.
+
+        Returns:
+            str: Returns contents of next file in directory given by path.
+        """
         if self.current_file_index >= len(self.file_names):
             return None
         with open(self.path + "/" + self.file_names[self.current_file_index]) as f:
@@ -150,22 +172,31 @@ class Corpus:
     """
 
     def __init__(self, reader):
-        """
-        Parameters
-        ----------
-        reader : Reader
-            instance of Reader class
+        """Creates instance of Corpus class using Reader class instance.
+
+        Args:
+            reader (Reader): 
         """
         self.documents = {}
         self.average_document_length = 0
         self.build_corpus(reader)
 
     def update_average(self, added_len):
+        """Updates average document length after new document is added.
+
+        Args:
+            added_len (int): Length of new document that was added.
+        """
         self.average_document_length = (
             self.average_document_length * len(self.documents) + added_len
         ) / (len(self.documents) + 1)
 
     def build_corpus(self, reader):
+        """Builds corpus
+
+        Args:
+            reader (Reader): _description_
+        """
         current_document = -1
         while True:
             current_document += 1
@@ -189,6 +220,14 @@ class Corpus:
                 self.documents[docId] = Document(map_terms, docId)
 
     def get_document(self, docId):
+        """Fetches documents using documnet id.
+
+        Args:
+            docId (int): unique identifier for the document
+
+        Returns:
+            Document: Returns document with given docID.
+        """
         return self.documents[docId]
 
 
@@ -305,6 +344,17 @@ class InvertedIndex:
         return math.log((N + 1) / (nqi + 0.5))
 
     def BM25(self, document, query_terms, k1, b):
+        """Ranks retrived documnets using BM25 Algorithm
+
+        Args:
+            document (Document): An instance of Documnet class for which rank is to be determined
+            query_terms (list[str]): list of Normalised Query Terms
+            k1 (int): k1 hyperparameter of BM25 Algorithm
+            b (int): b hyperparameter of BM25 Algorithm
+
+        Returns:
+            float: Return BM25 score of the given document
+        """
         score = 0
         # terms = query.split(" ")
         for term in query_terms:
@@ -334,7 +384,14 @@ class InvertedIndex:
 
 
 class Query:
+    """Class to store query
+    """
     def __init__(self, query):
+        """Initialises class with following query.
+
+        Args:
+            query (str): Query to be initalised.
+        """
         print("query is ", query)
         self.query = query
         self.was_corrected = False
@@ -356,6 +413,8 @@ class Query:
         self.normalise_all_terms()
 
     def normalise_all_terms(self):
+        """Normalize query and split it into AND, OR and NOT terms.
+        """
         def n(terms):
             return [normalise_query(x) for x in terms if x not in stop_words]
 
@@ -380,6 +439,14 @@ class Query:
             return self.query
 
     def get_candidate_documents(self, inverted_index):
+        """Gets Candidate documents from inverted index
+
+        Args:
+            inverted_index (InvertedIndex): Inverted index that was created previously.
+
+        Returns:
+            list of Document: Rerives a list of Documents from InvertedIndex.
+        """
         docs = None
         if self.and_terms:
             docs = inverted_index.get_documents_for_query_AND(self.and_terms)
@@ -388,6 +455,16 @@ class Query:
         return inverted_index.remove_documents_for_terms(self.not_terms, docs)
 
     def retrieve_documents(self, reader, corpus, inverted_index):
+        """Rerives documnet from corpus.
+
+        Args:
+            reader (Reader): Instance of Reader class to fetch documents from Corpus
+            corpus (Corpus): Corpus which contains all Documnets
+            inverted_index (InvertedIndx): Inveted Index that was costructed on Corpus
+
+        Returns:
+            list[str]: Returns list of filenames of documents to be retrived.
+        """
         # docs = inverted_index.get_documents_for_query_AND(self.and_terms)
         docs = self.get_candidate_documents(inverted_index)
 
@@ -418,6 +495,13 @@ class Query:
 
 
 def init():
+    """Converts Raw Documnets(.txt files) into relevant classes.
+
+    Returns:
+        Reader: instance of Reader class for easy reading of documents
+        Corpus: Corpus containing all Documents
+        InvertedIndex:  Inverted Index constructed on Raw Documents
+    """
     reader = Reader(path="Normal", original_files_dir="Unnormal/")
     corpus = Corpus(reader)
     inverted_index = InvertedIndex(corpus)
