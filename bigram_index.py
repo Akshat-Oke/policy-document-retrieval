@@ -61,15 +61,19 @@ class PhraseQuery:
             self.bigrams.append((terms[i], terms[i + 1]))
         # self.phrase_queries.sort(key=lambda x: len(x), reverse=True)
 
-    def run_phrase_query(self, bigram_index):
+    def get_bigrams(self):
+        return self.bigrams
+
+    def get_candidate_documents(self, bigram_index):
         return bigram_index.get_documents_for_query_AND(self.bigrams)
 
 
-reader = Reader(path="Normal/", original_files_dir="Unnormal/")
-corpus = Corpus(reader)
-bigram_index = InvertedIndex(corpus)
-query = PhraseQuery("contamination of property")
-# print(query.run_phrase_query(bigram_index))
-for docId in query.run_phrase_query(bigram_index):
-    filename = reader.get_original_passage_content(docId)
-    print(docId, filename)
+if __name__ == "__main__":
+    reader = Reader(path="Normal/", original_files_dir="Unnormal/")
+    corpus = Corpus(reader)
+    bigram_index = InvertedIndex(corpus)
+    query = PhraseQuery("contamination of property")
+    # print(query.run_phrase_query(bigram_index))
+    for docId in query.run_phrase_query(bigram_index):
+        filename = reader.get_original_passage_content(docId)
+        print(docId, filename)

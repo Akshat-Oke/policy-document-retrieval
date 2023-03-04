@@ -4,14 +4,18 @@ import os
 import re
 import math
 import nltk
+import timeit
 
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 from nltk.tokenize import word_tokenize
 
+# from bigram_index import PhraseQuery, Corpus as BigramCorpus
+
 stemmer = PorterStemmer()
 stop_words = set((stopwords.words("english")) + [",", ":"])
 
+search_time = 0
 
 k1 = 0.5
 b = 1
@@ -89,6 +93,75 @@ class Document:
         self.numberOfTerms = len(self.map_of_terms)
 
 
+class BigramCorpus:
+    def __init__(self, reader):
+        self.reader = reader
+        self.documents = {}
+        self.average_document_length = 0
+        self.build_corpus()
+
+    def update_average(self, added_len):
+        self.average_document_length = (
+            self.average_document_length * len(self.documents) + added_len
+        ) / (len(self.documents) + 1)
+
+    def get_document(self, docId):
+        return self.documents[docId]
+
+    def build_corpus(self):
+        current_document = -1
+        while True:
+            current_document += 1
+            document_content = self.reader.get_next_document()
+            if document_content == None:
+                break
+            passages = document_content.split("$$$")
+            passage_number = 0
+            for passage in passages:
+                terms = passage.split()
+                self.update_average(len(terms))
+                map_terms = {}
+                # for term in terms:
+                #     if term in map_terms:
+                #         map_terms[term] += 1
+                #     else:
+                #         map_terms[term] = 1
+                for i in range(len(terms) - 1):
+                    term = (terms[i], terms[i + 1])  # terms[i] + " " + terms[i + 1]
+                    if term in map_terms:
+                        map_terms[term] += 1
+                    else:
+                        map_terms[term] = 1
+                docId = passage_number + 500 * current_document
+                passage_number += 1
+                # self.documents.append(Document(map_terms, docId))
+                self.documents[docId] = Document(map_terms, docId)
+
+
+class PhraseQuery:
+    # phrase_queries = Array<String>
+    # "contamin proper Nevada" property
+    # Array<Tuple<string*>>
+    def __init__(self, phrase_query):
+        print("Got phrase query as", phrase_query)
+        self.original_query = phrase_query
+        self.phrase_query = normalise_query(phrase_query)
+        terms = self.phrase_query.split()
+        print("Phrase terms: ", terms)
+        if len(terms) < 2:
+            raise Exception("Phrase query must have at least 2 terms")
+        self.bigrams = []
+        for i in range(len(terms) - 1):
+            self.bigrams.append((terms[i], terms[i + 1]))
+        # self.phrase_queries.sort(key=lambda x: len(x), reverse=True)
+
+    def get_bigrams(self):
+        return self.bigrams
+
+    def get_candidate_documents(self, bigram_index):
+        return bigram_index.get_documents_for_query_AND(self.bigrams)
+
+
 class Reader:
     """Class"""
 
@@ -98,7 +171,7 @@ class Reader:
 
         Args:
             path (str): path of the directory in which documents are stored.
-            
+
             original_files_dir (dict {term : frequency}): Name of Original directory that contains  all documents
         """
 
@@ -111,9 +184,12 @@ class Reader:
         self.file_names = self.get_file_names()
         self.current_file_index = 0
 
+    def reinit(self):
+        self.current_file_index = 0
+
     def get_file_names(self):
         """Gets file names of files in the directory.
-        
+
         Returns:
             list[str]: Returns sorted list of files in current directory given by path.
         """
@@ -130,6 +206,9 @@ class Reader:
         """
         filename = self.file_names[docId // 500]
         return filename
+
+    # def cache_pdfs(self, docIds):
+    #     # self.cache = {}
 
     def get_original_passage_content(self, docId):
         """Fetches original passage using document ID
@@ -175,7 +254,7 @@ class Corpus:
         """Creates instance of Corpus class using Reader class instance.
 
         Args:
-            reader (Reader): 
+            reader (Reader):
         """
         self.documents = {}
         self.average_document_length = 0
@@ -384,8 +463,8 @@ class InvertedIndex:
 
 
 class Query:
-    """Class to store query
-    """
+    """Class to store query"""
+
     def __init__(self, query):
         """Initialises class with following query.
 
@@ -397,36 +476,44 @@ class Query:
         self.was_corrected = False
         # self.query = self.spell_check()
         # self.query_terms = self.query.split(" ")
+        # Remove ANDs
         self.and_terms = re.findall(r"\"\w+\"", self.query)
-        self.query = re.sub(r"\"\w+\"", "", self.query)
+        self.phrases = re.findall(r"\"(\w+(\s+\w+)+)\"", self.query)
+        self.phrases = list(map(lambda x: x[0], self.phrases))
+        print("Phrases ", self.phrases)
+        self.phrase_queries = list(map(lambda x: PhraseQuery(x), self.phrases))
+        self.query = re.sub(r"\"[^\"]+\"", "", self.query)
         print("After AND ", self.query)
+        # Remove NOTs
         self.not_terms = re.findall(r"\-\w+", self.query)
         self.query = re.sub(r"\-\w+", "", self.query)
         print("After NOT ", self.query)
+        # Remove ORs
         self.or_terms = re.split(r"\s+", self.query.strip())
         self.query_terms = list(set(self.and_terms + self.or_terms))
-        print(self.or_terms)
-        print(self.and_terms)
-        print(self.query_terms)
-        print(self.not_terms)
+        # print("Or: ", self.or_terms)
+        # print("And: ", self.and_terms)
+        # print("Query terms: ", self.query_terms)
+        # print("Not terms: ", self.not_terms)
         # self.query = normalise_query(query)
         self.normalise_all_terms()
 
     def normalise_all_terms(self):
-        """Normalize query and split it into AND, OR and NOT terms.
-        """
-        def n(terms):
-            return [normalise_query(x) for x in terms if x not in stop_words]
+        """Normalize query and split it into AND, OR and NOT terms."""
 
-        self.query_terms = n(self.query_terms)
-        self.and_terms = n(self.and_terms)
-        self.or_terms = n(self.or_terms)
-        self.not_terms = n(self.not_terms)
-        self.not_terms = [re.sub("-", "", x) for x in self.not_terms]
-        # print(self.or_terms)
-        # print(self.and_terms)
-        # print(self.query_terms)
-        # print(self.not_terms)
+        def n(terms):
+            return [normalise_query(x) for x in terms if (x not in stop_words)]
+
+        self.query_terms = list(filter(lambda x: len(x) != 0, n(self.query_terms)))
+        self.and_terms = list(filter(lambda x: len(x) != 0, n(self.and_terms)))
+        self.or_terms = list(filter(lambda x: len(x) != 0, n(self.or_terms)))
+        self.not_terms = list(filter(lambda x: len(x) != 0, n(self.not_terms)))
+        self.not_terms = [re.sub("-", "", x) for x in self.not_terms if x != ""]
+        print("After normalising all queries")
+        print("Or: ", self.or_terms)
+        print("And: ", self.and_terms)
+        print("Query terms: ", self.query_terms)
+        print("Not terms: ", self.not_terms)
 
     def spell_check(self):
         return self.query
@@ -438,7 +525,7 @@ class Query:
         else:
             return self.query
 
-    def get_candidate_documents(self, inverted_index):
+    def get_candidate_documents(self, inverted_index, bigram_index):
         """Gets Candidate documents from inverted index
 
         Args:
@@ -448,14 +535,21 @@ class Query:
             list of Document: Rerives a list of Documents from InvertedIndex.
         """
         docs = None
-        if self.and_terms:
+        if self.phrase_queries:
+            # docs = bigram_index.get_documents_for_query_AND(self.phrases)
+            for phrase_query in self.phrase_queries:
+                docs = phrase_query.get_candidate_documents(bigram_index)
+                # TODO add AND logic for multiple phrases
+        elif self.and_terms:
             docs = inverted_index.get_documents_for_query_AND(self.and_terms)
         else:
             docs = inverted_index.get_documents_for_query_OR(self.or_terms)
         return inverted_index.remove_documents_for_terms(self.not_terms, docs)
 
-    def retrieve_documents(self, reader, corpus, inverted_index):
-        """Rerives documnet from corpus.
+    def retrieve_documents(
+        self, reader, normal_corpus, bigram_corpus, inverted_index, bigram_index
+    ):
+        """Retrieves document from corpus.
 
         Args:
             reader (Reader): Instance of Reader class to fetch documents from Corpus
@@ -466,32 +560,51 @@ class Query:
             list[str]: Returns list of filenames of documents to be retrived.
         """
         # docs = inverted_index.get_documents_for_query_AND(self.and_terms)
-        docs = self.get_candidate_documents(inverted_index)
+        t0 = timeit.default_timer()
+        docs = self.get_candidate_documents(inverted_index, bigram_index)
 
         docs_with_bm25 = {}
         for doc in docs:
             docs_with_bm25[doc] = inverted_index.BM25(
-                corpus.get_document(doc), self.query_terms, k1, b
+                normal_corpus.get_document(doc), self.query_terms, k1, b
             )
+            if len(self.phrase_queries) > 0:
+                for phrase_query in self.phrase_queries:
+                    docs_with_bm25[doc] += bigram_index.BM25(
+                        bigram_corpus.get_document(doc),
+                        phrase_query.get_bigrams(),
+                        0.2,
+                        b,
+                    )
         # print(docs_with_bm25)
-        sorted_docs = sorted(
-            docs_with_bm25.items(), key=lambda item: item[1], reverse=True
-        )
+        # sorted_docs = sorted(
+        #     docs_with_bm25.items(), key=lambda item: item[1], reverse=True
+        # )
+        sorted_docs = docs_with_bm25.items()
         sorted_docIds = [x[0] for x in sorted_docs]
-        sorted_docs_with_filenames = map(
-            lambda x: {
-                "docId": x,
-                "filename": reader.get_original_passage_filename(
-                    corpus.get_document(x).docId
-                ),
-                "content": reader.get_original_passage_content(
-                    corpus.get_document(x).docId
-                ),
-                "bm25": docs_with_bm25[x],
-            },
-            sorted_docIds,
+
+        t_0 = timeit.default_timer()
+        # print("Time before mapping content", )
+        global search_time
+        search_time = round((t_0 - t0) * 10**3, 4)
+        sorted_docs_with_filenames = list(
+            map(
+                lambda x: {
+                    "docId": x,
+                    "filename": reader.get_original_passage_filename(
+                        normal_corpus.get_document(x).docId
+                    ),
+                    "content": reader.get_original_passage_content(
+                        normal_corpus.get_document(x).docId
+                    ),
+                    "bm25": docs_with_bm25[x],
+                },
+                sorted_docIds,
+            )
         )
-        return list(sorted_docs_with_filenames)
+        t_1 = timeit.default_timer()
+        print("Time taken: ", round((t_1 - t_0) * 10**3, 3))
+        return sorted_docs_with_filenames
 
 
 def init():
@@ -503,14 +616,23 @@ def init():
         InvertedIndex:  Inverted Index constructed on Raw Documents
     """
     reader = Reader(path="Normal", original_files_dir="Unnormal/")
-    corpus = Corpus(reader)
-    inverted_index = InvertedIndex(corpus)
-    return reader, corpus, inverted_index
+    normal_corpus = Corpus(reader)
+    reader.reinit()
+    bigram_corpus = BigramCorpus(reader)
+
+    inverted_index = InvertedIndex(normal_corpus)
+    bigram_index = InvertedIndex(bigram_corpus)
+    return reader, normal_corpus, bigram_corpus, inverted_index, bigram_index
 
 
-def search(reader, corpus, inverted_index, query):
+def search(reader, normal_corpus, bigram_corpus, inverted_index, bigram_index, query):
+    t0 = timeit.default_timer()
     query = Query(query)
-    docs = query.retrieve_documents(reader, corpus, inverted_index)
+    t1 = timeit.default_timer()
+    print("Just before returning: ", (t1 - t0) * 10**3)
+    docs = query.retrieve_documents(
+        reader, normal_corpus, bigram_corpus, inverted_index, bigram_index
+    )
     return docs
 
 
