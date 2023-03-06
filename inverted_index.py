@@ -2,6 +2,7 @@ from textblob import TextBlob
 import re
 import os
 import re
+import pickle
 import math
 import nltk
 import timeit
@@ -19,6 +20,9 @@ search_time = 0
 
 k1 = 0.5
 b = 1
+
+NORMALISED_CORPUS_PATH = "Normal"
+UNNORMALISED_CORPUS_PATH = "Unnormal"
 
 
 def normalise_query(query):
@@ -576,12 +580,15 @@ class Query:
                         0.2,
                         b,
                     )
-        # print(docs_with_bm25)
+        sorted_docIds = sorted(
+            docs, key=lambda item: docs_with_bm25[item], reverse=True
+        )
         # sorted_docs = sorted(
         #     docs_with_bm25.items(), key=lambda item: item[1], reverse=True
         # )
-        sorted_docs = docs_with_bm25.items()
-        sorted_docIds = [x[0] for x in sorted_docs]
+        # sorted_docs = docs_with_bm25.items()
+        # print("docs_withbm25 after", sorted_docs)
+        # sorted_docIds = [x[0] for x in sorted_docs]
 
         t_0 = timeit.default_timer()
         # print("Time before mapping content", )
@@ -607,21 +614,57 @@ class Query:
         return sorted_docs_with_filenames
 
 
-def init():
-    """Converts Raw Documnets(.txt files) into relevant classes.
+def save_as_pickle(obj):
+    """Saves inverted index as pickle file.
+
+    Args:
+        inverted_index (InvertedIndex): Inverted Index to be saved.
+    """
+    # inverted_indices = [inverted_index, bigram_index]
+    with open("inverted_index.pickle", "wb") as f:
+        pickle.dump(obj, f)
+
+
+def load_from_pickle(pickle_filepath):
+    try:
+        with open(pickle_filepath, "rb") as f:
+            return pickle.load(f)
+    except FileNotFoundError:
+        print("Pickle file not found. Creating new one.")
+        return None
+
+
+def init(normalised_corpus_path, unnormalised_corpus_path, pickle_filepath):
+    """Converts Raw Documents(.txt files) into relevant classes.
 
     Returns:
         Reader: instance of Reader class for easy reading of documents
         Corpus: Corpus containing all Documents
         InvertedIndex:  Inverted Index constructed on Raw Documents
     """
-    reader = Reader(path="Normal", original_files_dir="Unnormal/")
+    global NORMALISED_CORPUS_PATH
+    global UNNORMALISED_CORPUS_PATH
+    NORMALISED_CORPUS_PATH = normalised_corpus_path
+    UNNORMALISED_CORPUS_PATH = unnormalised_corpus_path
+    reader = Reader(
+        path=NORMALISED_CORPUS_PATH, original_files_dir=UNNORMALISED_CORPUS_PATH
+    )
     normal_corpus = Corpus(reader)
     reader.reinit()
     bigram_corpus = BigramCorpus(reader)
+    # inverted_indices = None
+    if pickle_filepath != None:
+        [inverted_index, bigram_index, normal_corpus, bigram_corpus] = load_from_pickle(
+            pickle_filepath
+        )
+    # if inverted_indices != None:
+    #     inverted_index = inverted_indices[0]
+    #     bigram_index = inverted_indices[1]
+    else:
+        inverted_index = InvertedIndex(normal_corpus)
+        bigram_index = InvertedIndex(bigram_corpus)
+        save_as_pickle([inverted_index, bigram_index, normal_corpus, bigram_corpus])
 
-    inverted_index = InvertedIndex(normal_corpus)
-    bigram_index = InvertedIndex(bigram_corpus)
     return reader, normal_corpus, bigram_corpus, inverted_index, bigram_index
 
 
@@ -637,7 +680,7 @@ def search(reader, normal_corpus, bigram_corpus, inverted_index, bigram_index, q
 
 
 def build_index_and_search(query):
-    reader = Reader("Normal")
+    reader = Reader(NORMALISED_CORPUS_PATH)
     corpus = Corpus(reader)
     inverted_index = InvertedIndex(corpus)
     # print(inverted_index.get_posting_list("contamin"))

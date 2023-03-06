@@ -1,9 +1,4 @@
-import re
-import os
-
-import re
-import os
-import re
+import re, os, sys
 import math
 import nltk
 
@@ -13,7 +8,7 @@ from nltk.tokenize import word_tokenize
 
 
 stemmer = PorterStemmer()
-stop_words = set((stopwords.words("english")) + [",", ":"])
+stop_words = set((stopwords.words("english")) + [",", ":", "#"])
 
 
 def normalise_query(query):
@@ -56,17 +51,31 @@ def split_into_passages(filename, path):
     output_file.close()
 
 
+def number_of_words(str):
+    regex = re.compile(r"\s+")
+    return len(regex.findall(str)) + 1
+
+
 def unnormal_to_processed(filename, path):
     processed_filename = filename  # .replace("_processed.txt", "_normal.txt")
-    output_file = open("Normal/" + processed_filename, "w")
+    output_file = open(normal_path + processed_filename, "w")
     paragraph = ""
+    prefix = ""
+    count = 0
     with open(path, "r") as f:
         passages = f.read().split("$$$")
         for passage in passages:
-            output_file.write(normalise_query(passage) + "$$$\n")
+            normalised = normalise_query(passage).strip()
+            if normalised != "":
+                output_file.write(prefix + normalised + "$$$")
+            prefix = "\n"
     output_file.close()
 
 
-for filepath in os.listdir("Unnormal/"):
-    unnormal_to_processed(filepath, "Unnormal/" + filepath)
+unnormal_path = sys.argv[1]
+normal_path = sys.argv[2]
+
+
+for filepath in os.listdir(unnormal_path):
+    unnormal_to_processed(filepath, unnormal_path + filepath)
     # split_into_passages(filepath, "Originals/" + filepath)
