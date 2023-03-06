@@ -39,7 +39,7 @@ Includes a specific term.
 
 Ex. `"Earthquake" explosion fire`
 
-### `<phrase>` Phrase query
+### `"<phrase>"` Phrase query
 
 Including more than one term in quotes will result in a phrase query. This will attempt to match the given phrase exactly in the given order.
 
